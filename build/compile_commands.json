@@ -1,8 +1,0 @@
-[
-{
-  "directory": "/home/tl/work/host_deepstream/deepstream-app-custom/src/gst-udpjson_meta/build",
-  "command": "/usr/bin/g++ -Dgst_udpjson_meta_EXPORTS -I/opt/nvidia/deepstream/deepstream/sources/includes -I/usr/include/gstreamer-1.0 -I/usr/include/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include -I/usr/include/json-glib-1.0 -I/usr/include/libmount -I/usr/include/blkid -I/home/tl/work/host_deepstream/deepstream-app-custom/src/gst-udpjson_meta  -g -fPIC -g -fPIC -o CMakeFiles/gst_udpjson_meta.dir/gstudpjsonmeta.cpp.o -c /home/tl/work/host_deepstream/deepstream-app-custom/src/gst-udpjson_meta/gstudpjsonmeta.cpp",
-  "file": "/home/tl/work/host_deepstream/deepstream-app-custom/src/gst-udpjson_meta/gstudpjsonmeta.cpp",
-  "output": "CMakeFiles/gst_udpjson_meta.dir/gstudpjsonmeta.cpp.o"
-}
-]

@@ -1,7 +1,0 @@
-/home/tl/work/host_deepstream/deepstream-app-custom/src/gst-udpjson_meta/build/CMakeFiles/gst_udpjson_meta.dir
-/home/tl/work/host_deepstream/deepstream-app-custom/src/gst-udpjson_meta/build/CMakeFiles/edit_cache.dir
-/home/tl/work/host_deepstream/deepstream-app-custom/src/gst-udpjson_meta/build/CMakeFiles/rebuild_cache.dir
-/home/tl/work/host_deepstream/deepstream-app-custom/src/gst-udpjson_meta/build/CMakeFiles/list_install_components.dir
-/home/tl/work/host_deepstream/deepstream-app-custom/src/gst-udpjson_meta/build/CMakeFiles/install.dir
-/home/tl/work/host_deepstream/deepstream-app-custom/src/gst-udpjson_meta/build/CMakeFiles/install/local.dir
-/home/tl/work/host_deepstream/deepstream-app-custom/src/gst-udpjson_meta/build/CMakeFiles/install/strip.dir
