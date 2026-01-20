@@ -1,0 +1,2 @@
+/opt/nvidia/deepstream/deepstream/lib/libudpjsonmeta.so
+/opt/nvidia/deepstream/deepstream/lib/gst-plugins/libudpjsonmeta.so
