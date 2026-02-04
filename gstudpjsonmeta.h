@@ -31,11 +31,13 @@ struct _GstUdpJsonMeta
     /* C-UAV 协议解析配置 */
     gboolean enable_cuav_parser; /* 是否启用 C-UAV 协议解析 */
     guint cuav_multicast_port; /* C-UAV 组播端口 */
+    guint cuav_ctrl_port; /* C-UAV 控制/引导端口 */
     gboolean cuav_debug; /* C-UAV 调试打印 */
     CUAVParser *cuav_parser; /* C-UAV 报文解析器 */
 
     gint sockfd; /* UDP 套接字 */
     gint cuav_sockfd; /* C-UAV UDP 套接字 */
+    gint cuav_ctrl_sockfd; /* C-UAV 控制/引导 UDP 套接字 */
     GThread *recv_thread; /* 接收线程 */
     gint stop_flag; /* 停止标记 */
 

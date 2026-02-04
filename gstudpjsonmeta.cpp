@@ -29,6 +29,7 @@ GST_DEBUG_CATEGORY_STATIC(gst_udpjson_meta_debug);
 
 /* C-UAV 协议默认配置 */
 #define DEFAULT_CUAV_MULTICAST_PORT 8013
+#define DEFAULT_CUAV_CTRL_PORT 8003
 
 /* 用户元数据结构体 */
 typedef struct
@@ -64,6 +65,7 @@ enum
     /* C-UAV 协议属性 */
     PROP_ENABLE_CUAV_PARSER,
     PROP_CUAV_MULTICAST_PORT,
+    PROP_CUAV_CTRL_PORT,
     PROP_CUAV_DEBUG
 };
 
@@ -375,8 +377,10 @@ static void udpjson_parse_and_cache(GstUdpJsonMeta *self, const gchar *data, gss
 static gpointer udpjson_recv_thread(gpointer data)
 {
     GstUdpJsonMeta *self = (GstUdpJsonMeta *)data; /* 插件实例 */
-    struct pollfd pfds[2]; /* poll 结构数组 */
+    struct pollfd pfds[3]; /* poll 结构数组 */
     guint num_fds = 1; /* 监听的 socket 数量 */
+    int idx_cuav = -1;
+    int idx_ctrl = -1;
     gchar buf[8192]; /* 接收缓冲区 */
 
     if (!self)
@@ -390,9 +394,17 @@ static gpointer udpjson_recv_thread(gpointer data)
     /* 如果启用了 C-UAV 解析，监听 C-UAV socket */
     if (self->enable_cuav_parser && self->cuav_sockfd >= 0)
     {
-        pfds[1].fd = self->cuav_sockfd;
-        pfds[1].events = POLLIN;
-        num_fds = 2;
+        idx_cuav = (int)num_fds;
+        pfds[idx_cuav].fd = self->cuav_sockfd;
+        pfds[idx_cuav].events = POLLIN;
+        num_fds++;
+    }
+    if (self->enable_cuav_parser && self->cuav_ctrl_sockfd >= 0)
+    {
+        idx_ctrl = (int)num_fds;
+        pfds[idx_ctrl].fd = self->cuav_ctrl_sockfd;
+        pfds[idx_ctrl].events = POLLIN;
+        num_fds++;
     }
 
     while (!g_atomic_int_get(&self->stop_flag))
@@ -414,13 +426,25 @@ static gpointer udpjson_recv_thread(gpointer data)
         }
 
         /* 检查 C-UAV socket 是否有数据 */
-        if (num_fds > 1 && (pfds[1].revents & POLLIN))
+        if (idx_cuav >= 0 && (pfds[idx_cuav].revents & POLLIN))
         {
             ssize_t len = recvfrom(self->cuav_sockfd, buf, sizeof(buf) - 1, 0, NULL, NULL);
             if (len > 0)
             {
                 buf[len] = '\0';
                 /* 解析 C-UAV 协议 */
+                if (self->enable_cuav_parser && self->cuav_parser)
+                {
+                    cuav_parser_parse(self->cuav_parser, buf, len);
+                }
+            }
+        }
+        if (idx_ctrl >= 0 && (pfds[idx_ctrl].revents & POLLIN))
+        {
+            ssize_t len = recvfrom(self->cuav_ctrl_sockfd, buf, sizeof(buf) - 1, 0, NULL, NULL);
+            if (len > 0)
+            {
+                buf[len] = '\0';
                 if (self->enable_cuav_parser && self->cuav_parser)
                 {
                     cuav_parser_parse(self->cuav_parser, buf, len);
@@ -596,6 +620,56 @@ static gboolean udpjson_setup_cuav_socket(GstUdpJsonMeta *self)
     }
 
     GST_INFO("C-UAV socket bound to port %u", self->cuav_multicast_port);
+    /* 初始化控制/引导端口 socket */
+    if (self->cuav_ctrl_port == 0)
+    {
+        self->cuav_ctrl_sockfd = -1;
+        return TRUE;
+    }
+
+    self->cuav_ctrl_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (self->cuav_ctrl_sockfd < 0)
+    {
+        GST_ERROR("Failed to create C-UAV CTRL UDP socket: %s", strerror(errno));
+        return FALSE;
+    }
+    if (setsockopt(self->cuav_ctrl_sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
+    {
+        GST_WARNING("Failed to set SO_REUSEADDR for C-UAV CTRL: %s", strerror(errno));
+    }
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_port = htons((guint16)self->cuav_ctrl_port);
+    if (bind(self->cuav_ctrl_sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+    {
+        GST_ERROR("Failed to bind C-UAV CTRL UDP socket to port %u: %s",
+                  self->cuav_ctrl_port, strerror(errno));
+        close(self->cuav_ctrl_sockfd);
+        self->cuav_ctrl_sockfd = -1;
+        return FALSE;
+    }
+    flags = fcntl(self->cuav_ctrl_sockfd, F_GETFL, 0);
+    if (flags >= 0)
+    {
+        if (fcntl(self->cuav_ctrl_sockfd, F_SETFL, flags | O_NONBLOCK) < 0)
+        {
+            GST_WARNING("Failed to set C-UAV CTRL socket non-blocking: %s", strerror(errno));
+        }
+    }
+    memset(&mreq, 0, sizeof(mreq));
+    mreq.imr_multiaddr.s_addr = inet_addr(self->multicast_ip);
+    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+    if (setsockopt(self->cuav_ctrl_sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
+    {
+        GST_WARNING("Failed to join C-UAV CTRL multicast group %s: %s",
+                    self->multicast_ip, strerror(errno));
+    }
+    else
+    {
+        GST_INFO("Joined C-UAV CTRL multicast group %s", self->multicast_ip);
+    }
+    GST_INFO("C-UAV CTRL socket bound to port %u", self->cuav_ctrl_port);
     return TRUE;
 }
 
@@ -617,6 +691,11 @@ static void udpjson_teardown_socket(GstUdpJsonMeta *self)
     {
         close(self->cuav_sockfd);
         self->cuav_sockfd = -1;
+    }
+    if (self->cuav_ctrl_sockfd >= 0)
+    {
+        close(self->cuav_ctrl_sockfd);
+        self->cuav_ctrl_sockfd = -1;
     }
 }
 
@@ -812,6 +891,9 @@ static void gst_udpjson_meta_set_property(GObject *object, guint property_id,
     case PROP_CUAV_MULTICAST_PORT:
         self->cuav_multicast_port = g_value_get_uint(value);
         break;
+    case PROP_CUAV_CTRL_PORT:
+        self->cuav_ctrl_port = g_value_get_uint(value);
+        break;
     case PROP_CUAV_DEBUG:
         self->cuav_debug = g_value_get_boolean(value);
         if (self->cuav_parser)
@@ -864,6 +946,9 @@ static void gst_udpjson_meta_get_property(GObject *object, guint property_id,
         break;
     case PROP_CUAV_MULTICAST_PORT:
         g_value_set_uint(value, self->cuav_multicast_port);
+        break;
+    case PROP_CUAV_CTRL_PORT:
+        g_value_set_uint(value, self->cuav_ctrl_port);
         break;
     case PROP_CUAV_DEBUG:
         g_value_set_boolean(value, self->cuav_debug);
@@ -973,6 +1058,12 @@ static void gst_udpjson_meta_class_init(GstUdpJsonMetaClass *klass)
                           1, 65535, DEFAULT_CUAV_MULTICAST_PORT,
                           (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
     g_object_class_install_property(
+        gobject_class, PROP_CUAV_CTRL_PORT,
+        g_param_spec_uint("cuav-ctrl-port", "C-UAV Control Port",
+                          "C-UAV protocol control/guidance multicast port (default 8003)",
+                          0, 65535, DEFAULT_CUAV_CTRL_PORT,
+                          (GParamFlags)(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(
         gobject_class, PROP_CUAV_DEBUG,
         g_param_spec_boolean("cuav-debug", "C-UAV Debug",
                              "Enable debug printing for C-UAV protocol messages",
@@ -997,11 +1088,13 @@ static void gst_udpjson_meta_init(GstUdpJsonMeta *self)
     /* C-UAV 协议解析配置 */
     self->enable_cuav_parser = FALSE;
     self->cuav_multicast_port = DEFAULT_CUAV_MULTICAST_PORT;
+    self->cuav_ctrl_port = DEFAULT_CUAV_CTRL_PORT;
     self->cuav_debug = FALSE;
     self->cuav_parser = cuav_parser_new();
 
     self->sockfd = -1;
     self->cuav_sockfd = -1;
+    self->cuav_ctrl_sockfd = -1;
     self->recv_thread = NULL;
     self->stop_flag = 0;
 

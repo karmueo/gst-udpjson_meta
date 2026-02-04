@@ -349,6 +349,10 @@ static JsonObject *cuav_get_specific_from_cont(JsonArray *cont)
                     return json_node_get_object(spec_node);
                 }
             }
+            else
+            {
+                return item;
+            }
         }
     }
     return NULL;

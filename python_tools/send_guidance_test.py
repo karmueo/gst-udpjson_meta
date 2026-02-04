@@ -12,9 +12,8 @@ import time
 from datetime import datetime
 
 # C-UAV 协议配置
-# 注意：此配置应与 perf-measurement.yml 中的 cuav-port 保持一致
-MULTICAST_ADDR = "230.1.1.22"   # C-UAV 组播地址
-CTRL_PORT = 8013                # 控制端口
+MULTICAST_ADDR = "230.1.88.51"   # C-UAV 组播地址
+CTRL_PORT = 8003                # 控制端口
 
 
 def get_timestamp():
