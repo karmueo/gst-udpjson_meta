@@ -11,7 +11,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(GST REQUIRED gstreamer-1.0 gstreamer-base-1.0)
 pkg_check_modules(JSONGLIB REQUIRED json-glib-1.0)
 
-add_library(gst_udpjson_meta SHARED gstudpjsonmeta.cpp)
+add_library(gst_udpjson_meta SHARED gstudpjsonmeta.cpp gstudpjsonmeta_cuav.cpp)
 
 target_include_directories(gst_udpjson_meta PRIVATE
   /opt/nvidia/deepstream/deepstream/sources/includes
