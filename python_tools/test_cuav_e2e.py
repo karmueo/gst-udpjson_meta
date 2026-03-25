@@ -41,6 +41,14 @@ MSG_TYPE_STREAM = 3
 class CUAVTestReceiver:
     """C-UAV 报文接收器"""
 
+    COMMON_HEADER_FIELDS = {
+        "msg_id", "msg_sn", "msg_type",
+        "tx_sys_id", "tx_dev_type", "tx_dev_id", "tx_subdev_id",
+        "rx_sys_id", "rx_dev_type", "rx_dev_id", "rx_subdev_id",
+        "yr", "mo", "dy", "h", "min", "sec", "msec",
+        "cont_type", "cont_sum",
+    }
+
     def __init__(self, multicast_addr=MULTICAST_ADDR, recv_port=FEEDBACK_PORT):
         self.multicast_addr = multicast_addr
         self.recv_port = recv_port
@@ -78,13 +86,12 @@ class CUAVTestReceiver:
     def _handle_message(self, data):
         try:
             raw_data = json.loads(data.decode('utf-8'))
-            common = raw_data.get("公共内容", {})
+            common = self._extract_common(raw_data)
             msg_id = common.get("msg_id", 0)
 
-            # 解析具体信息
-            if "具体信息" in raw_data:
-                specific = raw_data["具体信息"]
-            else:
+            # 仅支持真实设备当前使用的扁平 JSON
+            specific = self._extract_specific(raw_data)
+            if not specific:
                 return
 
             if msg_id == MSG_ID_GUIDANCE:
@@ -114,6 +121,20 @@ class CUAVTestReceiver:
 
         except json.JSONDecodeError:
             pass
+
+    def _extract_common(self, raw_data):
+        if "msg_id" in raw_data and "msg_type" in raw_data:
+            return {key: raw_data.get(key) for key in self.COMMON_HEADER_FIELDS if key in raw_data}
+        return {}
+
+    def _extract_specific(self, raw_data):
+        if "msg_id" in raw_data and "msg_type" in raw_data:
+            return {
+                key: value for key, value in raw_data.items()
+                if key not in self.COMMON_HEADER_FIELDS
+            }
+
+        return {}
 
     def stop(self):
         self.running = False
@@ -157,40 +178,34 @@ class CUAVTestSender:
 
     def send_guidance(self, tar_id=1, guid_stat=1, enu_a=45.0, enu_e=30.0, enu_r=5000):
         """发送引导信息"""
-        common = {
+        msg = {
             "msg_id": MSG_ID_GUIDANCE,
             "msg_sn": self._get_msg_sn(),
             "msg_type": MSG_TYPE_CTRL,
             "tx_sys_id": 3, "tx_dev_type": 3, "tx_dev_id": 1, "tx_subdev_id": 999,
             "rx_sys_id": 999, "rx_dev_type": 1, "rx_dev_id": 1, "rx_subdev_id": 999,
             **self._get_timestamp(),
-            "cont_type": 1, "cont_sum": 1
-        }
-        specific = {
-            **self._get_timestamp(),
+            "cont_type": 1, "cont_sum": 1,
             "tar_id": tar_id, "tar_category": 9, "guid_stat": guid_stat,
             "ecef_x": -1245634.5, "ecef_y": 5298212.3, "ecef_z": 2997512.1,
             "ecef_vx": 100.5, "ecef_vy": -50.2, "ecef_vz": 0.0,
             "enu_r": enu_r, "enu_a": enu_a, "enu_e": enu_e,
             "lon": 116.397, "lat": 39.916, "alt": 5000
         }
-        msg = {"公共内容": common, "具体信息": specific}
         self.sock.sendto(json.dumps(msg, ensure_ascii=False).encode('utf-8'),
                          (self.multicast_addr, CTRL_PORT))
         print(f"[发送] 引导信息: tar_id={tar_id}, guid_stat={guid_stat}, enu=({enu_a:.1f}, {enu_e:.1f})")
 
     def send_servo_control(self, loc_h=90.0, loc_v=45.0):
         """发送伺服控制"""
-        common = {
+        msg = {
             "msg_id": 0x7101,
             "msg_sn": self._get_msg_sn(),
             "msg_type": MSG_TYPE_CTRL,
             "tx_sys_id": 3, "tx_dev_type": 3, "tx_dev_id": 1, "tx_subdev_id": 999,
             "rx_sys_id": 999, "rx_dev_type": 1, "rx_dev_id": 1, "rx_subdev_id": 999,
             **self._get_timestamp(),
-            "cont_type": 0, "cont_sum": 1
-        }
-        specific = {
+            "cont_type": 0, "cont_sum": 1,
             "cmd_id": MSG_ID_EO_SERVO, "cmd_coef1": 0,
             "dev_id": 2, "dev_en": 1, "ctrl_en": 1,
             "mode_h": 0, "mode_v": 0,
@@ -200,7 +215,6 @@ class CUAVTestSender:
             "loc_en_v": 1, "loc_v": loc_v,
             "offset_en": 0
         }
-        msg = {"公共内容": common, "具体信息": specific}
         self.sock.sendto(json.dumps(msg, ensure_ascii=False).encode('utf-8'),
                          (self.multicast_addr, CTRL_PORT))
         print(f"[发送] 伺服控制: 水平={loc_h:.1f}°, 垂直={loc_v:.1f}°")

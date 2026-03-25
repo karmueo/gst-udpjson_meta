@@ -37,6 +37,13 @@ class CUAVEmulator:
         "alt": 100,
         "version": "1.0.0"
     }
+    COMMON_HEADER_FIELDS = {
+        "msg_id", "msg_sn", "msg_type",
+        "tx_sys_id", "tx_dev_type", "tx_dev_id", "tx_subdev_id",
+        "rx_sys_id", "rx_dev_type", "rx_dev_id", "rx_subdev_id",
+        "yr", "mo", "dy", "h", "min", "sec", "msec",
+        "cont_type", "cont_sum",
+    }
 
     def __init__(
         self,
@@ -132,19 +139,20 @@ class CUAVEmulator:
     def _parse_specific(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         解析具体信息
-        支持单信息格式 (具体信息) 和多信息格式 (cont 数组)
+        仅支持真实设备当前使用的扁平 JSON
         """
-        # 先尝试单信息格式
-        specific = raw_data.get("具体信息", {})
-        if specific:
-            return specific
+        if "msg_id" in raw_data and "msg_type" in raw_data:
+            return {
+                key: value for key, value in raw_data.items()
+                if key not in self.COMMON_HEADER_FIELDS
+            }
 
-        # 再尝试多信息格式
-        cont = raw_data.get("cont", [])
-        if cont and isinstance(cont, list) and len(cont) > 0:
-            first_item = cont[0]
-            if isinstance(first_item, dict) and "具体信息" in first_item:
-                return first_item["具体信息"]
+        return {}
+
+    def _parse_common(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+        """解析公共报文头，仅支持扁平格式"""
+        if "msg_id" in raw_data and "msg_type" in raw_data:
+            return {key: raw_data.get(key) for key in self.COMMON_HEADER_FIELDS if key in raw_data}
 
         return {}
 
@@ -178,7 +186,8 @@ class CUAVEmulator:
 
     def _send_feedback(self, common: Dict[str, Any], specific: Dict[str, Any]):
         """发送回馈报文"""
-        msg = {"公共内容": common, "具体信息": specific}
+        msg = dict(common)
+        msg.update(specific)
         data = json.dumps(msg, ensure_ascii=False)
         self._feedback_sock.sendto(
             data.encode('utf-8'),
@@ -368,13 +377,12 @@ class CUAVEmulator:
                 data, addr = self._control_sock.recvfrom(65535)
                 try:
                     raw_data = json.loads(data.decode('utf-8'))
-                    common = raw_data.get("公共内容", {})
+                    common = self._parse_common(raw_data)
                     msg_type = common.get("msg_type", -1)
                     msg_id = common.get("msg_id", -1)
 
                     if msg_type == 0 and msg_id == 0x7111:
                         # 引导信息 (优先级最高，因为msg_type也是0)
-                        # 处理多信息格式 (cont 数组) 和单信息格式
                         specific = self._parse_specific(raw_data)
                         self._handle_guidance(specific)
                     elif msg_type == 0:
@@ -651,7 +659,8 @@ class CUAVEmulatorWithTargetStream(CUAVEmulator):
             "ir_focus_mode": 0
         }
 
-        msg = {"公共内容": common, "具体信息": specific}
+        msg = dict(common)
+        msg.update(specific)
         data = json.dumps(msg, ensure_ascii=False)
         self._feedback_sock.sendto(
             data.encode('utf-8'),
@@ -760,7 +769,8 @@ class CUAVEmulatorWithTargetStream(CUAVEmulator):
             "alt": self.config["alt"]
         }
 
-        msg = {"公共内容": common, "具体信息": specific}
+        msg = dict(common)
+        msg.update(specific)
         data = json.dumps(msg, ensure_ascii=False)
         self._feedback_sock.sendto(
             data.encode('utf-8'),

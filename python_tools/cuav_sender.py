@@ -17,6 +17,13 @@ class CUAVMulticastSender:
 
     DEFAULT_MULTICAST_ADDR = "230.1.88.51"
     DEFAULT_MULTICAST_PORT = 8003
+    COMMON_HEADER_FIELDS = {
+        "msg_id", "msg_sn", "msg_type",
+        "tx_sys_id", "tx_dev_type", "tx_dev_id", "tx_subdev_id",
+        "rx_sys_id", "rx_dev_type", "rx_dev_id", "rx_subdev_id",
+        "yr", "mo", "dy", "h", "min", "sec", "msec",
+        "cont_type", "cont_sum",
+    }
 
     # 报文ID常量
     MSG_ID_CMD = 0x7101          # 指令
@@ -138,22 +145,15 @@ class CUAVMulticastSender:
         发送报文
 
         Args:
-            common: 公共内容
-            specific: 具体信息
+            common: 公共报文头字段
+            specific: 业务字段
             cont_type: 信息类型
 
         Returns:
             发送的字节数
         """
-        if cont_type == 0:
-            msg = {"公共内容": common, "具体信息": specific}
-        else:
-            # 多信息格式
-            if isinstance(specific, list):
-                cont = [{"具体信息": item} for item in specific]
-            else:
-                cont = [{"具体信息": specific}]
-            msg = {"公共内容": common, "cont": cont}
+        msg: Dict[str, Any] = dict(common)
+        msg.update(specific)
 
         data = json.dumps(msg, ensure_ascii=False)
         return self._sock.sendto(data.encode('utf-8'), (self.multicast_addr, self.multicast_port))

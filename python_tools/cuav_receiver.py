@@ -17,6 +17,14 @@ from typing import Any, Callable, Dict, List, Optional, Set
 class CUAVMessageParser:
     """C-UAV 报文解析器"""
 
+    COMMON_HEADER_FIELDS = {
+        "msg_id", "msg_sn", "msg_type",
+        "tx_sys_id", "tx_dev_type", "tx_dev_id", "tx_subdev_id",
+        "rx_sys_id", "rx_dev_type", "rx_dev_id", "rx_subdev_id",
+        "yr", "mo", "dy", "h", "min", "sec", "msec",
+        "cont_type", "cont_sum",
+    }
+
     # 报文ID常量
     MSG_ID_CMD = 0x7101          # 指令
     MSG_ID_DEV_CONFIG = 0x7102   # 设备配置参数
@@ -86,18 +94,17 @@ class CUAVMessageParser:
             解析后的报文字典，解析失败返回None
         """
         try:
-            # 提取公共内容和具体信息
-            common = raw_data.get("公共内容", {})
+            # 仅支持真实设备当前使用的扁平 JSON
+            common = self._extract_common(raw_data)
             specific_list = []
 
-            if "具体信息" in raw_data:
-                specific_list = [raw_data["具体信息"]]
-            elif "cont" in raw_data:
-                for item in raw_data.get("cont", []):
-                    if "具体信息" in item:
-                        specific_list.append(item["具体信息"])
-                    else:
-                        specific_list.append(item)
+            if "msg_id" in raw_data and "msg_type" in raw_data:
+                specific = {
+                    key: value for key, value in raw_data.items()
+                    if key not in self.COMMON_HEADER_FIELDS
+                }
+                if specific:
+                    specific_list = [specific]
 
             if not specific_list:
                 return None
@@ -124,6 +131,12 @@ class CUAVMessageParser:
         except Exception as e:
             print(f"解析报文失败: {e}")
             return None
+
+    def _extract_common(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+        if "msg_id" in raw_data and "msg_type" in raw_data:
+            return {key: raw_data.get(key) for key in self.COMMON_HEADER_FIELDS if key in raw_data}
+
+        return {}
 
     def _parse_timestamp(self, common: Dict[str, Any]) -> datetime:
         """解析时间戳"""

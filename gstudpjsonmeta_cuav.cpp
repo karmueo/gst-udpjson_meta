@@ -330,35 +330,6 @@ static void cuav_parse_servo_control(JsonObject *specific, CUAVServoControl *ser
 }
 
 /**
- * @brief 从 cont 数组中获取第一个具体信息对象
- */
-static JsonObject *cuav_get_specific_from_cont(JsonArray *cont)
-{
-    guint len = json_array_get_length(cont);
-    for (guint i = 0; i < len; i++)
-    {
-        JsonNode *node = json_array_get_element(cont, i);
-        if (node && JSON_NODE_HOLDS_OBJECT(node))
-        {
-            JsonObject *item = json_node_get_object(node);
-            if (json_object_has_member(item, "具体信息"))
-            {
-                JsonNode *spec_node = json_object_get_member(item, "具体信息");
-                if (spec_node && JSON_NODE_HOLDS_OBJECT(spec_node))
-                {
-                    return json_node_get_object(spec_node);
-                }
-            }
-            else
-            {
-                return item;
-            }
-        }
-    }
-    return NULL;
-}
-
-/**
  * @brief 判断对象是否包含 C-UAV 公共报文头字段。
  */
 static gboolean cuav_has_common_header(JsonObject *obj)
@@ -406,16 +377,7 @@ gboolean cuav_parser_parse(CUAVParser *parser, const gchar *data, gssize len)
 
     root_obj = json_node_get_object(root);
 
-    /* 优先解析协议文档中的嵌套格式，其次兼容真实设备发送的扁平 JSON。 */
-    if (json_object_has_member(root_obj, "公共内容"))
-    {
-        JsonNode *common_node = json_object_get_member(root_obj, "公共内容");
-        if (common_node && JSON_NODE_HOLDS_OBJECT(common_node))
-        {
-            common = json_node_get_object(common_node);
-        }
-    }
-    else if (cuav_has_common_header(root_obj))
+    if (cuav_has_common_header(root_obj))
     {
         common = root_obj;
     }
@@ -430,28 +392,8 @@ gboolean cuav_parser_parse(CUAVParser *parser, const gchar *data, gssize len)
     cuav_parse_common_header(common, &header, recv_ts_us);
     msg_id = header.msg_id;
 
-    /* 获取具体信息 */
-    if (json_object_has_member(root_obj, "具体信息"))
-    {
-        JsonNode *spec_node = json_object_get_member(root_obj, "具体信息");
-        if (spec_node && JSON_NODE_HOLDS_OBJECT(spec_node))
-        {
-            specific = json_node_get_object(spec_node);
-        }
-    }
-    else if (json_object_has_member(root_obj, "cont"))
-    {
-        JsonNode *cont_node = json_object_get_member(root_obj, "cont");
-        if (cont_node && JSON_NODE_HOLDS_ARRAY(cont_node))
-        {
-            specific = cuav_get_specific_from_cont(json_node_get_array(cont_node));
-        }
-    }
-    else if (common == root_obj)
-    {
-        /* 真实设备当前使用扁平 JSON：公共头和具体信息都在根对象。 */
-        specific = root_obj;
-    }
+    /* 真实设备当前使用扁平 JSON：公共头和具体信息都在根对象。 */
+    specific = root_obj;
 
     if (!specific)
     {
