@@ -358,6 +358,18 @@ static JsonObject *cuav_get_specific_from_cont(JsonArray *cont)
     return NULL;
 }
 
+/**
+ * @brief 判断对象是否包含 C-UAV 公共报文头字段。
+ */
+static gboolean cuav_has_common_header(JsonObject *obj)
+{
+    if (!obj)
+        return FALSE;
+
+    return json_object_has_member(obj, "msg_id") &&
+           json_object_has_member(obj, "msg_type");
+}
+
 gboolean cuav_parser_parse(CUAVParser *parser, const gchar *data, gssize len)
 {
     JsonParser *json_parser = NULL;
@@ -394,7 +406,7 @@ gboolean cuav_parser_parse(CUAVParser *parser, const gchar *data, gssize len)
 
     root_obj = json_node_get_object(root);
 
-    /* 获取公共内容 */
+    /* 优先解析协议文档中的嵌套格式，其次兼容真实设备发送的扁平 JSON。 */
     if (json_object_has_member(root_obj, "公共内容"))
     {
         JsonNode *common_node = json_object_get_member(root_obj, "公共内容");
@@ -402,6 +414,10 @@ gboolean cuav_parser_parse(CUAVParser *parser, const gchar *data, gssize len)
         {
             common = json_node_get_object(common_node);
         }
+    }
+    else if (cuav_has_common_header(root_obj))
+    {
+        common = root_obj;
     }
 
     if (!common)
@@ -430,6 +446,11 @@ gboolean cuav_parser_parse(CUAVParser *parser, const gchar *data, gssize len)
         {
             specific = cuav_get_specific_from_cont(json_node_get_array(cont_node));
         }
+    }
+    else if (common == root_obj)
+    {
+        /* 真实设备当前使用扁平 JSON：公共头和具体信息都在根对象。 */
+        specific = root_obj;
     }
 
     if (!specific)
